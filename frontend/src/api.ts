@@ -1,9 +1,9 @@
 import { io } from "socket.io-client";
 
-// Get base URL from env or use relative path (assuming proxy or ingress routes /api to backend)
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/v1';
+// Get base URL from env or use origin (Nginx will proxy this to backend)
+const BASE_URL = import.meta.env.VITE_API_URL || `${window.location.origin}/v1`;
 
-export const socket = io(import.meta.env.VITE_WS_URL || 'http://localhost:3001');
+export const socket = io(import.meta.env.VITE_WS_URL || window.location.origin);
 
 export const getAuthToken = () => localStorage.getItem('token');
 export const setAuthToken = (token: string) => localStorage.setItem('token', token);
