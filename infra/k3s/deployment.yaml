@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: localhost:5000/database:latest
+        imagePullPolicy: Always
+        env:
+        - name: POSTGRES_DB
+          value: "devops_db"
+        - name: POSTGRES_USER
+          value: "postgres"
+        - name: POSTGRES_PASSWORD
+          value: "postgres"
+        ports:
+        - containerPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+      - name: backend
+        image: localhost:5000/backend:latest
+        imagePullPolicy: Always
+        env:
+        - name: DATABASE_URL
+          value: "postgres://postgres:postgres@postgres:5432/devops_db"
+        - name: JWT_SECRET
+          value: "super_secret_jwt_key_123"
+        - name: PORT
+          value: "3001"
+        ports:
+        - containerPort: 3001
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: localhost:5000/frontend:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 80

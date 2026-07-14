@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import multer from 'multer';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcrypt';
 import { Pool } from 'pg';
 import fs from 'fs';
 import path from 'path';
@@ -18,7 +19,7 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET || 'MOCK_SECRET_AQUI';
+const JWT_SECRET = process.env.JWT_SECRET || 'MOCK_SECRET_AQUI';
 
 // Configuración de Servidor
 app.use(cors());
@@ -109,11 +110,10 @@ export const requireAuth = (req: Request, res: Response, next: any) => {
   const token = authHeader.split(' ')[1];
 
   try {
-    // Validar el JWT. El secret lo sacas de Supabase -> Settings -> API -> JWT Secret.
-    // Si usas otro backend totalmente diferente, usas tu propio secret
-    const decoded = jwt.verify(token, SUPABASE_JWT_SECRET) as any;
+    // Validar el JWT.
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
 
-    // Almacenamos el token decodificado (que incluye `sub` como UUID del usuario del auth.users de Supabase)
+    // Almacenamos el token decodificado (que incluye `sub` como UUID del usuario)
     (req as any).user = decoded;
     next();
   } catch (error) {
@@ -121,6 +121,78 @@ export const requireAuth = (req: Request, res: Response, next: any) => {
     return res.status(401).json({ error: 'Token inválido o expirado' });
   }
 };
+
+// -------------------------------------------------------------
+// AUTH ENDPOINTS
+// -------------------------------------------------------------
+app.post('/v1/auth/register', async (req: Request, res: Response) => {
+  const client = await pool.connect();
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Faltan credenciales' });
+    }
+    
+    // Check if user exists
+    const userExists = await client.query('SELECT id FROM users WHERE email = $1', [email]);
+    if (userExists.rows.length > 0) {
+      return res.status(400).json({ error: 'El usuario ya existe' });
+    }
+
+    const saltRounds = 10;
+    const passwordHash = await bcrypt.hash(password, saltRounds);
+
+    const newUser = await client.query(
+      'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email',
+      [email, passwordHash]
+    );
+
+    const user = newUser.rows[0];
+    const token = jwt.sign({ sub: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
+
+    return res.status(201).json({ success: true, user, token });
+  } catch (error: any) {
+    console.error('Error in register:', error);
+    return res.status(500).json({ error: 'Error del servidor' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/v1/auth/login', async (req: Request, res: Response) => {
+  const client = await pool.connect();
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Faltan credenciales' });
+    }
+
+    const result = await client.query('SELECT * FROM users WHERE email = $1', [email]);
+    const user = result.rows[0];
+
+    if (!user) {
+      return res.status(401).json({ error: 'Credenciales inválidas' });
+    }
+
+    const isValid = await bcrypt.compare(password, user.password_hash);
+    if (!isValid) {
+      return res.status(401).json({ error: 'Credenciales inválidas' });
+    }
+
+    const token = jwt.sign({ sub: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
+    
+    return res.status(200).json({
+      success: true,
+      user: { id: user.id, email: user.email },
+      token
+    });
+  } catch (error: any) {
+    console.error('Error in login:', error);
+    return res.status(500).json({ error: 'Error del servidor' });
+  } finally {
+    client.release();
+  }
+});
 
 // -------------------------------------------------------------
 // ENDPOINT: POST /v1/bitacora

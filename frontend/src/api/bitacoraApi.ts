@@ -1,4 +1,4 @@
-import supabase from "../utils/supabase";
+// Supabase removed
 
 /**
  * URL base del backend REST propio. 
@@ -53,15 +53,12 @@ export const bitacoraApi = {
    */
   async crearRegistro(payload: BitacoraRegistroPayload, fotosTarea: File[], fotosIncidente: File[]): Promise<unknown> {
     try {
-      // 1. Extraer el JWT de la sesión de Supabase actual de forma segura.
-      // Así garantizamos que NO interfiere con la sesión principal, solo tomamos el token.
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      // 1. Extraer el JWT del localStorage
+      const jwtToken = localStorage.getItem('token');
 
-      if (sessionError || !sessionData.session) {
+      if (!jwtToken) {
         throw new Error('No hay una sesión activa. Por favor, inicia sesión de nuevo.');
       }
-
-      const jwtToken = sessionData.session.access_token;
 
       // 2. Preparar el multipart/form-data
       const formData = new FormData();
@@ -112,13 +109,11 @@ export const bitacoraApi = {
    */
   async obtenerRegistros(): Promise<BitacoraRegistro[]> {
     try {
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      const jwtToken = localStorage.getItem('token');
 
-      if (sessionError || !sessionData.session) {
+      if (!jwtToken) {
         throw new Error('No hay sesión activa.');
       }
-
-      const jwtToken = sessionData.session.access_token;
 
       const response = await fetch(`${API_BASE_URL}/v1/bitacora`, {
         method: 'GET',
@@ -145,13 +140,11 @@ export const bitacoraApi = {
    */
   async editarRegistro(id: string, payload: Partial<BitacoraRegistroPayload>): Promise<unknown> {
     try {
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      const jwtToken = localStorage.getItem('token');
 
-      if (sessionError || !sessionData.session) {
+      if (!jwtToken) {
         throw new Error('No hay sesión activa.');
       }
-
-      const jwtToken = sessionData.session.access_token;
 
       const response = await fetch(`${API_BASE_URL}/v1/bitacora/${id}`, {
         method: 'PUT',
@@ -179,13 +172,11 @@ export const bitacoraApi = {
    */
   async eliminarRegistro(id: string): Promise<unknown> {
     try {
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      const jwtToken = localStorage.getItem('token');
 
-      if (sessionError || !sessionData.session) {
+      if (!jwtToken) {
         throw new Error('No hay sesión activa.');
       }
-
-      const jwtToken = sessionData.session.access_token;
 
       const response = await fetch(`${API_BASE_URL}/v1/bitacora/${id}`, {
         method: 'DELETE',

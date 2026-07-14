@@ -1,5 +1,13 @@
 -- Esquema SQL Recomendado para Ejecutar en tu Base de Datos PostgreSQL (ej: Panel SQL de Supabase)
 
+-- 0. Crear Tabla de Usuarios (Reemplaza auth.users de Supabase)
+CREATE TABLE public.users (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  email varchar(255) UNIQUE NOT NULL,
+  password_hash varchar(255) NOT NULL,
+  created_at timestamp with time zone DEFAULT now()
+);
+
 -- 1. Crear Tabla Principal de Bitácora
 CREATE TABLE public.bitacora (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -10,7 +18,7 @@ CREATE TABLE public.bitacora (
   ubicacion varchar(150),
   proyecto_id uuid,
   proyecto_nombre varchar(255),
-  created_by uuid NOT NULL REFERENCES auth.users(id), -- Requiere supabase auth
+  created_by uuid NOT NULL REFERENCES public.users(id),
   created_at timestamp with time zone DEFAULT now()
 );
 

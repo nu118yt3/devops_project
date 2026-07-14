@@ -1,0 +1,65 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      backend: ${{ steps.filter.outputs.backend }}
+      database: ${{ steps.filter.outputs.database }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'frontend/**'
+            backend:
+              - 'backend/**'
+            database:
+              - 'backend/db-init.sql'
+              - 'backend/database.Dockerfile'
+
+  build-and-deploy:
+    needs: changes
+    runs-on: self-hosted # Self-hosted para acceder a localhost:5000 y al clúster local
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # FRONTEND
+      - name: Build Frontend Image
+        if: ${{ needs.changes.outputs.frontend == 'true' }}
+        run: |
+          docker build -t localhost:5000/frontend:latest -f frontend/Dockerfile frontend/
+          docker push localhost:5000/frontend:latest
+          kubectl rollout restart deployment/frontend || true
+
+      # BACKEND
+      - name: Build Backend Image
+        if: ${{ needs.changes.outputs.backend == 'true' }}
+        run: |
+          docker build -t localhost:5000/backend:latest -f backend/Dockerfile backend/
+          docker push localhost:5000/backend:latest
+          kubectl rollout restart deployment/backend || true
+
+      # DATABASE
+      - name: Build Database Image
+        if: ${{ needs.changes.outputs.database == 'true' }}
+        run: |
+          docker build -t localhost:5000/database:latest -f backend/database.Dockerfile backend/
+          docker push localhost:5000/database:latest
+          kubectl rollout restart deployment/postgres || true
+
+      # TERRAFORM (Optional: Aplicar cambios de infraestructura)
+      - name: Apply Terraform
+        run: |
+          cd infra/terraform
+          terraform init
+          terraform apply -auto-approve
