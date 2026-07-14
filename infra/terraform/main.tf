@@ -19,12 +19,12 @@ resource "docker_image" "k3s" {
 resource "docker_container" "k3s_server" {
   name  = "k3s-server"
   image = docker_image.k3s.image_id
-  command = ["server", "--disable=traefik"]
+  command = ["server", "--disable=traefik", "--https-listen-port=16443"]
   privileged = true
   
   ports {
-    internal = 6443
-    external = 6443
+    internal = 16443
+    external = 16443
   }
   
   # Puerto NodePort para Frontend
