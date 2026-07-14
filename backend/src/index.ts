@@ -36,6 +36,16 @@ const io = new Server(httpServer, {
 app.use(cors());
 app.use(express.json());
 
+// --- GLOBAL LOGGER MIDDLEWARE ---
+app.use((req: Request, res: Response, next: any) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl} - ${res.statusCode} (${duration}ms)`);
+  });
+  next();
+});
+
 // --- HEALTH CHECK ENDPOINT ---
 app.get('/health', (req: Request, res: Response) => {
   res.status(200).json({
