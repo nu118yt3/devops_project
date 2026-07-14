@@ -1,7 +1,7 @@
 import { Express, Request, Response } from 'express';
 import { Pool } from 'pg';
 import { Server } from 'socket.io';
-import { requireAuth } from './index';
+import { requireAuth } from './auth';
 
 export function setupRoutes(app: Express, pool: Pool, io: Server, upload: any, getFileUrl: any) {
 

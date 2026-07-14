@@ -111,27 +111,7 @@ const getFileUrl = (file: Express.Multer.File): string => {
 };
 
 // 4. AuthMiddleware: Validar el JWT que llega desde el frontend
-export const requireAuth = (req: Request, res: Response, next: any) => {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'No autorizado, falta token JWT.' });
-  }
-
-  const token = authHeader.split(' ')[1];
-
-  try {
-    // Validar el JWT.
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
-
-    // Almacenamos el token decodificado (que incluye `sub` como UUID del usuario)
-    (req as any).user = decoded;
-    next();
-  } catch (error) {
-    console.error('JWT Error:', error);
-    return res.status(401).json({ error: 'Token inválido o expirado' });
-  }
-};
+import { requireAuth } from './auth';
 
 // -------------------------------------------------------------
 // AUTH ENDPOINTS
