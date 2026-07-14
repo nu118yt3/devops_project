@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-and-deploy:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Fix workspace permissions
         run: docker run --rm -v $GITHUB_WORKSPACE:/workspace alpine chown -R $(id -u):$(id -g) /workspace || true
