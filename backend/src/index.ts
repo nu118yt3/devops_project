@@ -36,6 +36,14 @@ const io = new Server(httpServer, {
 app.use(cors());
 app.use(express.json());
 
+// --- NATIVE SECURITY HEADERS ---
+app.use((req: Request, res: Response, next: any) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  next();
+});
+
 // --- GLOBAL LOGGER MIDDLEWARE ---
 app.use((req: Request, res: Response, next: any) => {
   const start = Date.now();
