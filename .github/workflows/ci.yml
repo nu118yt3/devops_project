@@ -35,6 +35,8 @@ jobs:
     needs: detect-changes
     runs-on: self-hosted # Usar runner local para tener acceso a localhost:5000 y al cluster k3s
     steps:
+      - name: Fix workspace permissions
+        run: sudo chown -R $USER:$USER $GITHUB_WORKSPACE || true
       - name: Checkout code
         uses: actions/checkout@v3
 
@@ -70,6 +72,9 @@ jobs:
       run:
         working-directory: infra/terraform
     steps:
+      - name: Fix workspace permissions
+        run: sudo chown -R $USER:$USER $GITHUB_WORKSPACE || true
+        working-directory: ${{ github.workspace }}
       - name: Checkout code
         uses: actions/checkout@v3
 
