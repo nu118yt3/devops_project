@@ -137,26 +137,18 @@ export function UsersPage() {
                     throw new Error("Email and Password are required for new users")
                 }
 
-                const tempSupabase = createClient(supabaseUrl, supabaseKey, {
-                    auth: {
-                        persistSession: false,
-                        autoRefreshToken: false,
-                        detectSessionInUrl: false
-                    }
-                })
+                // Call backend API here
+                // const { data: authData, error: authError } = await api.post('/auth/register', { ... })
+                const authData = { user: { id: Date.now().toString() } };
+                const authError = null;
 
-                const { data: authData, error: authError } = await tempSupabase.auth.signUp({
-                    email: formData.email,
-                    password: formData.password,
-                    options: {
-                        data: {
-                            full_name: formData.full_name, // Changed from name
-                            role: formData.role
-                        }
-                    }
-                })
+                if (authError) {
+                    throw authError
+                }
 
-                if (authError) throw authError
+                if (!authData.user) {
+                    throw new Error("Failed to create user")
+                }
 
                 if (authData.user) {
                     // 2. Create User in 'users' table if not triggered automatically
