@@ -1,51 +1,193 @@
 terraform {
   required_providers {
-    docker = {
-      source  = "kreuzwerker/docker"
-      version = "~> 3.0.0"
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 2.23.0"
     }
   }
 }
 
-provider "docker" {
-  # Terraform autodetectará el socket de Docker.
+provider "kubernetes" {
+  config_path = "~/.kube/config"
 }
 
-resource "docker_image" "k3s" {
-  name         = "rancher/k3s:v1.27.4-k3s1"
-  keep_locally = true
+resource "kubernetes_namespace" "app_namespace" {
+  metadata {
+    name = "devops-app"
+  }
 }
 
-resource "docker_container" "k3s_server" {
-  name  = "k3s-server"
-  image = docker_image.k3s.image_id
-  command = ["server", "--disable=traefik", "--https-listen-port=16443"]
-  privileged = true
-  
-  ports {
-    internal = 16443
-    external = 16443
+# ==========================================
+# SECRETS
+# ==========================================
+resource "kubernetes_secret" "app_secrets" {
+  metadata {
+    name      = "app-secrets"
+    namespace = kubernetes_namespace.app_namespace.metadata[0].name
   }
-  
-  # Puerto NodePort para Frontend
-  ports {
-    internal = 30080
-    external = 30080
+  data = {
+    "DATABASE_URL" = "postgres://postgres:postgres@postgres-service:5432/devops_db"
+    "JWT_SECRET"   = "misupersecretosecretojwt2023"
   }
+}
 
-  # Puerto NodePort para Backend
-  ports {
-    internal = 30081
-    external = 30081
+# ==========================================
+# POSTGRES
+# ==========================================
+resource "kubernetes_deployment" "postgres" {
+  metadata {
+    name      = "postgres-deployment"
+    namespace = kubernetes_namespace.app_namespace.metadata[0].name
   }
+  spec {
+    replicas = 1
+    selector {
+      match_labels = {
+        app = "postgres"
+      }
+    }
+    template {
+      metadata {
+        labels = {
+          app = "postgres"
+        }
+      }
+      spec {
+        container {
+          name  = "postgres"
+          image = "localhost:5000/db:latest"
+          port {
+            container_port = 5432
+          }
+        }
+      }
+    }
+  }
+}
 
-  env = [
-    "K3S_KUBECONFIG_OUTPUT=/output/kubeconfig.yaml",
-    "K3S_KUBECONFIG_MODE=666"
-  ]
+resource "kubernetes_service" "postgres_service" {
+  metadata {
+    name      = "postgres-service"
+    namespace = kubernetes_namespace.app_namespace.metadata[0].name
+  }
+  spec {
+    selector = {
+      app = "postgres"
+    }
+    port {
+      port        = 5432
+      target_port = 5432
+    }
+  }
+}
 
-  volumes {
-    host_path      = "${path.cwd}/k3s-output"
-    container_path = "/output"
+# ==========================================
+# BACKEND
+# ==========================================
+resource "kubernetes_deployment" "backend" {
+  metadata {
+    name      = "backend-deployment"
+    namespace = kubernetes_namespace.app_namespace.metadata[0].name
+  }
+  spec {
+    replicas = 1
+    selector {
+      match_labels = {
+        app = "backend"
+      }
+    }
+    template {
+      metadata {
+        labels = {
+          app = "backend"
+        }
+      }
+      spec {
+        container {
+          name  = "backend"
+          image = "localhost:5000/backend:latest"
+          image_pull_policy = "Always"
+          port {
+            container_port = 3001
+          }
+          env_from {
+            secret_ref {
+              name = kubernetes_secret.app_secrets.metadata[0].name
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+resource "kubernetes_service" "backend_service" {
+  metadata {
+    name      = "backend-service"
+    namespace = kubernetes_namespace.app_namespace.metadata[0].name
+  }
+  spec {
+    selector = {
+      app = "backend"
+    }
+    port {
+      port        = 3001
+      target_port = 3001
+      node_port   = 30001
+    }
+    type = "NodePort"
+  }
+}
+
+# ==========================================
+# FRONTEND
+# ==========================================
+resource "kubernetes_deployment" "frontend" {
+  metadata {
+    name      = "frontend-deployment"
+    namespace = kubernetes_namespace.app_namespace.metadata[0].name
+  }
+  spec {
+    replicas = 1
+    selector {
+      match_labels = {
+        app = "frontend"
+      }
+    }
+    template {
+      metadata {
+        labels = {
+          app = "frontend"
+        }
+      }
+      spec {
+        container {
+          name  = "frontend"
+          image = "localhost:5000/frontend:latest"
+          image_pull_policy = "Always"
+          port {
+            container_port = 80
+          }
+        }
+      }
+    }
+  }
+}
+
+resource "kubernetes_service" "frontend_service" {
+  metadata {
+    name      = "frontend-service"
+    namespace = kubernetes_namespace.app_namespace.metadata[0].name
+  }
+  spec {
+    selector = {
+      app = "frontend"
+    }
+    port {
+      port        = 80
+      target_port = 80
+      node_port   = 30080
+    }
+    type = "NodePort"
   }
 }

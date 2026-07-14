@@ -19,7 +19,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
-import supabase from "@/utils/supabase";
+import { api } from "@/api";
 import { useProject } from "@/contexts/ProjectContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -232,12 +232,7 @@ export function ProjectList() {
   const fetchProjects = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from("projects")
-        .select("*")
-        .order("name", { ascending: true });
-
-      if (error) throw error;
+      const { data } = await api.get("/projects");
       setProjects(data || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error fetching projects");
@@ -247,16 +242,9 @@ export function ProjectList() {
   };
 
   // Función para eliminar proyecto
-  const deleteProject = async (projectId: string) => {
     try {
       setIsDeleting(true);
-
-      const { error } = await supabase.rpc("delete_project", {
-        project_id: projectId,
-      });
-
-      if (error) throw error;
-
+      await api.delete(`/projects/${projectId}`);
       setProjects((prev) => prev.filter((project) => project.id !== projectId));
       setDeleteDialogOpen(false);
       setProjectToDelete(null);
@@ -296,13 +284,12 @@ export function ProjectList() {
     try {
       setIsCreating(true);
 
-      // Solo crear el proyecto en Supabase
-      const { data: projectId, error } = await supabase.rpc("create_project", {
-        project_name: newProject.name.trim(),
-        project_description: newProject.description.trim() || null,
+      const { data: projectId } = await api.post("/projects", {
+        data: {
+          name: newProject.name.trim(),
+          description: newProject.description.trim() || null,
+        }
       });
-
-      if (error) throw error;
 
       // 🔥 ACTUALIZACIÓN CRÍTICA: CREAR EL OBJETO LOCALMENTE
       // Simplemente creamos un objeto temporal con los datos del nuevo proyecto

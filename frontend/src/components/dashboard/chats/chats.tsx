@@ -17,7 +17,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import supabase from '@/utils/supabase';
+import { api, socket } from '@/api';
 
 type User = {
   id: string;
@@ -89,15 +89,20 @@ export default function ChatsPage() {
   // Fetch current user
   useEffect(() => {
     const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const u: User = {
-          id: user.id,
-          email: user.email || '',
-          full_name: user.user_metadata?.full_name,
-          avatar_url: user.user_metadata?.avatar_url,
-        };
-        setCurrentUser(u);
+      try {
+        const token = localStorage.getItem('token');
+        if (token) {
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          const u: User = {
+            id: payload.sub,
+            email: payload.email,
+            full_name: payload.full_name || payload.email,
+            avatar_url: payload.avatar_url,
+          };
+          setCurrentUser(u);
+        }
+      } catch (err) {
+        console.error("Auth error", err);
       }
     };
     getUser();
@@ -108,134 +113,77 @@ export default function ChatsPage() {
     if (!currentUser) return;
 
     const loadData = async () => {
-      // 1. Load users
-      const { data: users } = await supabase
-        .from('profiles')
-        .select('id, full_name, avatar_url')
-        .neq('id', currentUser.id);
+      try {
+        // 1. Load users
+        const { data: users } = await api.get('/profiles');
+        setAllUsers(users ? users.filter((u:any) => u.id !== currentUser.id) : []);
 
-      setAllUsers(users || []);
+        // 2. Load groups
+        const { data: memberships } = await api.get(`/group_members?user_id=${currentUser.id}`);
+        const groupIds = memberships?.map((m:any) => m.group_id) || [];
+        
+        const { data: allGroups } = await api.get('/groups');
+        const groups = allGroups?.filter((g:any) => groupIds.includes(g.id)) || [];
 
-      // 2. Load groups
-      const { data: memberships } = await supabase
-        .from('group_members')
-        .select('group_id')
-        .eq('user_id', currentUser.id);
+        // 3. Load Pinned Conversations
+        const { data: pinned } = await api.get('/pinned_conversations');
+        const pinnedIds = new Set(pinned?.map((p:any) => p.conversation_id));
 
-      const groupIds = memberships?.map(m => m.group_id) || [];
+        // 4. Load ALL messages for context
+        const groupIdsStr = groupIds.join(',');
+        const { data: allMessages } = await api.get(`/messages?user_id=${currentUser.id}&group_ids=${groupIdsStr}`);
 
-      const { data: groups } = await supabase
-        .from('groups')
-        .select('id, name, avatar_url')
-        .in('id', groupIds.length > 0 ? groupIds : ['00000000-0000-0000-0000-000000000000']);
-
-      // 3. Load Pinned Conversations
-      const { data: pinned } = await supabase
-        .from('pinned_conversations')
-        .select('conversation_id')
-        .eq('user_id', currentUser.id);
-      const pinnedIds = new Set(pinned?.map(p => p.conversation_id));
-
-      // 4. Load ALL messages for context (Last message, Time, Unread)
-      // Note: In a production app with millions of messages, you'd use a dedicated "conversations" table or materialized view.
-      // For this scale, strictly fetching messages where I am sender or receiver is fine.
-
-      const { data: allMessages } = await supabase
-        .from('messages')
-        .select('*')
-        .or(`sender_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id},group_id.in.(${groupIds.length > 0 ? groupIds.join(',') : '00000000-0000-0000-0000-000000000000'})`)
-        .order('created_at', { ascending: true }); // Get latest last
-
-      // Process messages to find latest per conversation
-      const conversationStats = new Map<string, { lastMsg: string, lastTime: string, unread: number }>();
-
-      allMessages?.forEach((msg: Message) => {
-        // Determine conversation ID
-        let convoId: string | undefined;
-        if (msg.group_id) {
-          convoId = msg.group_id;
-        } else {
-          // Direct message: The conversation ID is the OTHER person's ID
-          convoId = msg.sender_id === currentUser.id ? msg.receiver_id : msg.sender_id;
-        }
-
-        if (convoId) {
-          const currentStats = conversationStats.get(convoId) || { lastMsg: '', lastTime: '', unread: 0 };
-
-          currentStats.lastMsg = msg.content;
-          currentStats.lastTime = msg.created_at;
-
-          // Check unread: If I am the receiver and it's not read
-          // Assuming 'is_read' exists. If not, this logic effectively does nothing or defaults false.
-          if (msg.receiver_id === currentUser.id && !msg.is_read) {
-            currentStats.unread += 1;
+        const conversationStats = new Map<string, { lastMsg: string, lastTime: string, unread: number }>();
+        allMessages?.forEach((msg: Message) => {
+          let convoId = msg.group_id ? msg.group_id : (msg.sender_id === currentUser.id ? msg.receiver_id : msg.sender_id);
+          if (convoId) {
+            const currentStats = conversationStats.get(convoId) || { lastMsg: '', lastTime: '', unread: 0 };
+            currentStats.lastMsg = msg.content;
+            currentStats.lastTime = msg.created_at;
+            if (msg.receiver_id === currentUser.id && !msg.is_read) {
+              currentStats.unread += 1;
+            }
+            conversationStats.set(convoId, currentStats);
           }
-          // Reset unread if I sent the last message? No, unread is count of incoming. 
-          // Usually distinct per user. Since we stream all messages, we can just count incoming unread.
+        });
 
-          conversationStats.set(convoId, currentStats);
+        const convos: Conversation[] = [];
+        if (users) {
+          users.forEach((u: User) => {
+            if (u.id !== currentUser.id) {
+              const stats = conversationStats.get(u.id);
+              if (stats || pinnedIds.has(u.id)) {
+                convos.push({
+                  id: u.id, type: 'direct', direct_user: u,
+                  last_message: stats?.lastMsg || 'No messages yet',
+                  last_timestamp: stats?.lastTime || new Date().toISOString(),
+                  unread_count: stats?.unread || 0, is_pinned: pinnedIds.has(u.id),
+                });
+              }
+            }
+          });
         }
-      });
 
-
-      // Build conversations List
-      const convos: Conversation[] = [];
-
-      // Direct chats - Only add if they have history OR are pinned
-      if (users) {
-        users.forEach((u: User) => {
-          const stats = conversationStats.get(u.id);
-          if (stats || pinnedIds.has(u.id)) {
-            convos.push({
-              id: u.id,
-              type: 'direct',
-              direct_user: u,
-              last_message: stats?.lastMsg || 'No messages yet',
+        if (groups) {
+          const groupConvosPromises = groups.map(async (g:any) => {
+            const { data: members } = await api.get(`/group_members?group_id=${g.id}`);
+            const stats = conversationStats.get(g.id);
+            return {
+              id: g.id, type: 'group' as const,
+              group: { id: g.id, name: g.name, avatar_url: g.avatar_url, member_ids: members?.map((m:any) => m.user_id) || [] },
+              last_message: stats?.lastMsg || 'Group created',
               last_timestamp: stats?.lastTime || new Date().toISOString(),
-              unread_count: stats?.unread || 0,
-              is_pinned: pinnedIds.has(u.id),
-            });
-          }
-        });
-      }
+              unread_count: stats?.unread || 0, is_pinned: pinnedIds.has(g.id),
+            };
+          });
+          const groupConvos = await Promise.all(groupConvosPromises);
+          convos.push(...groupConvos);
+        }
 
-      // Group chats
-      if (groups) {
-        // Need member fetch inside loop or batch? Batch is better but simple loop is easier for now.
-        // We do this async.
-        const groupConvosPromises = groups.map(async (g) => {
-          const { data: members } = await supabase
-            .from('group_members')
-            .select('user_id')
-            .eq('group_id', g.id);
-
-          const stats = conversationStats.get(g.id);
-          return {
-            id: g.id,
-            type: 'group' as const,
-            group: {
-              id: g.id,
-              name: g.name,
-              avatar_url: g.avatar_url,
-              member_ids: members?.map(m => m.user_id) || [],
-            },
-            last_message: stats?.lastMsg || 'Group created',
-            last_timestamp: stats?.lastTime || new Date().toISOString(),
-            unread_count: stats?.unread || 0,
-            is_pinned: pinnedIds.has(g.id),
-          };
-        });
-
-        const groupConvos = await Promise.all(groupConvosPromises);
-        convos.push(...groupConvos);
-      }
-
-      // Sort by timestamp (newest first)
-      convos.sort((a, b) => new Date(b.last_timestamp!).getTime() - new Date(a.last_timestamp!).getTime());
-
-      setConversations(convos);
+        convos.sort((a, b) => new Date(b.last_timestamp!).getTime() - new Date(a.last_timestamp!).getTime());
+        setConversations(convos);
+      } catch(e) { console.error(e); }
     };
-
     loadData();
   }, [currentUser]);
 
@@ -249,13 +197,7 @@ export default function ChatsPage() {
   useEffect(() => {
     if (!currentUser) return;
 
-    const channel = supabase
-      .channel('global-chats')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'messages',
-      }, (payload) => {
+    socket.on('postgres_changes', (payload: any) => {
         const newMsg = payload.new as Message;
         const currentSelected = selectedConversationRef.current;
 
@@ -265,7 +207,7 @@ export default function ChatsPage() {
           (currentSelected.type === 'group' && newMsg.group_id === currentSelected.id)
         )) {
           setMessages(prev => {
-            // Precise dedup using ID (now consistent)
+            // Precise dedup using ID
             if (prev.some(m => m.id === newMsg.id)) return prev;
 
             let sender = newMsg.sender_id === currentUser.id ? currentUser : allUsers.find(u => u.id === newMsg.sender_id);
@@ -283,9 +225,6 @@ export default function ChatsPage() {
 
             if (isMatch) {
               found = true;
-              // Increment unread count if:
-              // 1. I am NOT the sender AND
-              // 2. It's NOT the currently selected conversation
               const shouldIncrement = newMsg.sender_id !== currentUser.id && (!currentSelected || currentSelected.id !== c.id);
 
               return {
@@ -299,18 +238,13 @@ export default function ChatsPage() {
           });
 
           if (!found) {
-            // New conversation started by someone else?
             if (newMsg.receiver_id === currentUser.id) {
               const sender = allUsers.find(u => u.id === newMsg.sender_id);
               if (sender) {
                 const newConvo: Conversation = {
-                  id: sender.id,
-                  type: 'direct',
-                  direct_user: sender,
-                  last_message: newMsg.content,
-                  last_timestamp: newMsg.created_at,
-                  unread_count: 1, // First message is surely unread
-                  is_pinned: false
+                  id: sender.id, type: 'direct', direct_user: sender,
+                  last_message: newMsg.content, last_timestamp: newMsg.created_at,
+                  unread_count: 1, is_pinned: false
                 };
                 return [newConvo, ...updated];
               }
@@ -319,11 +253,10 @@ export default function ChatsPage() {
 
           return updated.sort((a, b) => new Date(b.last_timestamp!).getTime() - new Date(a.last_timestamp!).getTime());
         });
-      })
-      .subscribe();
+      });
 
     return () => {
-      supabase.removeChannel(channel);
+      socket.off('postgres_changes');
     };
   }, [currentUser, allUsers]); // Removed selectedConversation from deps
 
@@ -335,38 +268,28 @@ export default function ChatsPage() {
     }
 
     const loadMessages = async () => {
-      let filter;
-      if (selectedConversation.type === 'direct') {
-        const otherId = selectedConversation.id;
-        filter = supabase
-          .from('messages')
-          .select('*, sender:profiles!messages_sender_id_fkey(id, full_name, avatar_url)')
-          .or(
-            `and(sender_id.eq.${currentUser.id},receiver_id.eq.${otherId}),` +
-            `and(sender_id.eq.${otherId},receiver_id.eq.${currentUser.id})`
-          );
-      } else {
-        filter = supabase
-          .from('messages')
-          .select('*, sender:profiles!messages_sender_id_fkey(id, full_name, avatar_url)')
-          .eq('group_id', selectedConversation.id);
-      }
-
-      const { data } = await filter.order('created_at', { ascending: true });
-      setMessages(data || []);
-
-      // Clear unread count locally when opened
-      setConversations(prev => prev.map(c =>
-        c.id === selectedConversation.id ? { ...c, unread_count: 0 } : c
-      ));
-
-      // Mark as read in DB
-      if (data && data.length > 0) {
-        const unreadIds = data.filter((m: Message) => m.receiver_id === currentUser.id && !m.is_read).map((m: Message) => m.id);
-        if (unreadIds.length > 0) {
-          await supabase.from('messages').update({ is_read: true }).in('id', unreadIds);
+      try {
+        let endpoint = '';
+        if (selectedConversation.type === 'direct') {
+          endpoint = `/messages?selected_user=${selectedConversation.id}`;
+        } else {
+          endpoint = `/messages?selected_group=${selectedConversation.id}`;
         }
-      }
+
+        const { data } = await api.get(endpoint);
+        setMessages(data || []);
+
+        setConversations(prev => prev.map(c =>
+          c.id === selectedConversation.id ? { ...c, unread_count: 0 } : c
+        ));
+
+        if (data && data.length > 0) {
+          const unreadIds = data.filter((m: Message) => m.receiver_id === currentUser.id && !m.is_read).map((m: Message) => m.id);
+          if (unreadIds.length > 0) {
+            await api.put('/messages/read', { data: { message_ids: unreadIds } });
+          }
+        }
+      } catch (e) { console.error(e); }
     };
 
     loadMessages();
@@ -409,21 +332,17 @@ export default function ChatsPage() {
     });
 
     // 2. Perform DB Insert with the SAME ID
-    if (selectedConversation.type === 'direct') {
-      await supabase.from('messages').insert({
-        id: tempId, // Important for deduplication
-        content: content,
-        sender_id: currentUser.id,
-        receiver_id: selectedConversation.id,
-      });
-    } else {
-      await supabase.from('messages').insert({
-        id: tempId, // Important for deduplication
-        content: content,
-        sender_id: currentUser.id,
-        group_id: selectedConversation.id,
-      });
-    }
+    try {
+      if (selectedConversation.type === 'direct') {
+        await api.post('/messages', {
+          data: { id: tempId, content: content, sender_id: currentUser.id, receiver_id: selectedConversation.id }
+        });
+      } else {
+        await api.post('/messages', {
+          data: { id: tempId, content: content, sender_id: currentUser.id, group_id: selectedConversation.id }
+        });
+      }
+    } catch(e) { console.error(e); }
   };
 
   const startNewDirectChat = (user: User) => {
@@ -453,16 +372,15 @@ export default function ChatsPage() {
 
     const members = [currentUser!.id, ...selectedMembers];
 
-    const { data: group } = await supabase
-      .from('groups')
-      .insert({ name: groupName, created_by: currentUser!.id })
-      .select()
-      .single();
+    try {
+      const { data: group } = await api.post('/groups', {
+        data: { name: groupName, created_by: currentUser!.id }
+      });
 
-    if (group) {
-      await supabase.from('group_members').insert(
-        members.map(user_id => ({ group_id: group.id, user_id }))
-      );
+      if (group) {
+        await api.post('/group_members', {
+          data: members.map(user_id => ({ group_id: group.id, user_id }))
+        });
 
       const newConvo: Conversation = {
         id: group.id,
@@ -483,7 +401,7 @@ export default function ChatsPage() {
       setIsCreateGroupOpen(false);
       setGroupName('');
       setSelectedMembers([]);
-    }
+    } catch(e) { console.error(e); }
   };
 
   const togglePin = async (conv: Conversation) => {
@@ -497,15 +415,11 @@ export default function ChatsPage() {
 
     try {
       if (newPinnedStatus) {
-        await supabase.from('pinned_conversations').insert({
-          user_id: currentUser.id,
-          conversation_id: conv.id,
-          type: conv.type
+        await api.post('/pinned_conversations', {
+          data: { user_id: currentUser.id, conversation_id: conv.id, type: conv.type }
         });
       } else {
-        await supabase.from('pinned_conversations').delete()
-          .eq('user_id', currentUser.id)
-          .eq('conversation_id', conv.id);
+        await api.delete(`/pinned_conversations?user_id=${currentUser.id}&conversation_id=${conv.id}`);
       }
     } catch (err) {
       console.error("Error toggling pin", err);
@@ -522,12 +436,9 @@ export default function ChatsPage() {
 
     try {
       if (selectedConversation.type === 'direct') {
-        await supabase.from('messages').delete().or(
-          `and(sender_id.eq.${currentUser.id},receiver_id.eq.${selectedConversation.id}),` +
-          `and(sender_id.eq.${selectedConversation.id},receiver_id.eq.${currentUser.id})`
-        );
+        await api.delete('/messages/conversation', { data: { direct_id: selectedConversation.id } });
       } else {
-        await supabase.from('messages').delete().eq('group_id', selectedConversation.id);
+        await api.delete('/messages/conversation', { data: { group_id: selectedConversation.id } });
       }
 
       setMessages([]);

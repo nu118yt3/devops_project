@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import supabase from '@/utils/supabase';
+import { api } from '@/api';
 import { useProject } from '@/contexts/ProjectContext';
 
 interface Plano {
@@ -35,13 +35,7 @@ export function PlanosList() {
 
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('planos')
-        .select('*')
-        .eq('project_id', project.id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
+      const { data } = await api.get(`/planos?project_id=${project.id}`);
       setPlanos(data || []);
     } catch (error) {
       console.error('Error fetching planos:', error);

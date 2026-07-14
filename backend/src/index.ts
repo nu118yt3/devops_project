@@ -7,6 +7,9 @@ import bcrypt from 'bcrypt';
 import { Pool } from 'pg';
 import fs from 'fs';
 import path from 'path';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+import { setupRoutes } from './routes';
 
 // ─── IMPORTACIONES PARA S3 ──────────
 import { S3Client, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
@@ -22,6 +25,14 @@ const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'MOCK_SECRET_AQUI';
 
 // Configuración de Servidor
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST", "PUT", "DELETE"]
+  }
+});
+
 app.use(cors());
 app.use(express.json());
 
@@ -465,14 +476,14 @@ app.delete('/v1/bitacora/:id', requireAuth, async (req: Request, res: Response) 
   }
 });
 
-// Servir archivos estáticos solo en modo local.
-// En S3, las imágenes se sirven directamente desde la URL pública del bucket;
-// no es necesario (ni posible) montarlas como estáticas aquí.
 if (STORAGE_TYPE === 'local') {
   app.use('/uploads', express.static(UPLOADS_DIR));
 }
 
-app.listen(PORT, () => {
+// Configurar todas las rutas adicionales
+setupRoutes(app, pool, io, upload, getFileUrl);
+
+httpServer.listen(PORT, () => {
   console.log('==============================================');
   console.log(`🚀 SERVIDOR BACKEND INICIADO`);
   console.log(`📡 URL: http://localhost:${PORT}`);
