@@ -64,7 +64,7 @@ const ProjectRequiredRoute = ({ children }: { children: React.ReactNode }) => {
 
 const NotFound = () => (
   <div style={{ textAlign: 'center', marginTop: '100px' }}>
-    <h1>404 - Página no encontrada</h1>
+    <h1>404 - Página no encontrada lo sentimos</h1>
     <p>La ruta que buscas no existe.</p>
     <a href="/projects" style={{ color: 'blue', textDecoration: 'underline' }}>Volver a Proyectos</a>
   </div>
