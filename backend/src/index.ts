@@ -483,7 +483,7 @@ if (STORAGE_TYPE === 'local') {
 // Configurar todas las rutas adicionales
 setupRoutes(app, pool, io, upload, getFileUrl);
 
-httpServer.listen(PORT, () => {
+httpServer.listen(PORT as number, '0.0.0.0', () => {
   console.log('==============================================');
   console.log(`🚀 SERVIDOR BACKEND INICIADO`);
   console.log(`📡 URL: http://localhost:${PORT}`);
