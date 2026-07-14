@@ -145,7 +145,7 @@ export default function BitacoraHistorial() {
                       {registro.fotos.filter(f => f.tipo !== 'incidente').map(foto => {
                         const cleanUrl = foto.url_path.startsWith('http') 
                           ? foto.url_path 
-                          : encodeURI(`http://localhost:3001${foto.url_path.startsWith('/') ? '' : '/'}${foto.url_path}`);
+                          : encodeURI(`${window.location.origin}/v1${foto.url_path.startsWith('/') ? '' : '/'}${foto.url_path}`);
                         return (
                           <button key={foto.id} type="button" onClick={() => window.open(cleanUrl, '_blank')} className="flex-shrink-0 w-24 h-24 rounded-xl overflow-hidden border border-gray-200 shadow-sm relative group bg-black cursor-pointer">
                             <img src={cleanUrl} alt="Evidencia" className="w-full h-full object-cover group-hover:opacity-80 transition-opacity" />
@@ -165,7 +165,7 @@ export default function BitacoraHistorial() {
                       {registro.fotos.filter(f => f.tipo === 'incidente').map(foto => {
                         const cleanUrl = foto.url_path.startsWith('http') 
                           ? foto.url_path 
-                          : encodeURI(`http://localhost:3001${foto.url_path.startsWith('/') ? '' : '/'}${foto.url_path}`);
+                          : encodeURI(`${window.location.origin}/v1${foto.url_path.startsWith('/') ? '' : '/'}${foto.url_path}`);
                         return (
                           <button key={foto.id} type="button" onClick={() => window.open(cleanUrl, '_blank')} className="flex-shrink-0 w-24 h-24 rounded-xl overflow-hidden border border-gray-200 shadow-sm relative group bg-black cursor-pointer">
                             <img src={cleanUrl} alt="Evidencia" className="w-full h-full object-cover group-hover:opacity-80 transition-opacity" />
