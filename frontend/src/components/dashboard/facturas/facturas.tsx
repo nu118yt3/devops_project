@@ -333,7 +333,7 @@ export default function FacturasPage() {
       if (!invoice.xml_file_url) return;
 
       toast.info("Generando enlace de descarga seguro...");
-      const signedUrl = await getSignedUrl(invoice.xml_file_url, true);
+      const signedUrl = invoice.xml_file_url;
 
       if (!signedUrl) return;
 
@@ -357,7 +357,7 @@ export default function FacturasPage() {
 
     try {
       toast.info("Generando enlace de descarga seguro...");
-      const signedUrl = await getSignedUrl(invoice.attachment_file_url, true);
+      const signedUrl = invoice.attachment_file_url;
 
       if (!signedUrl) return;
 
@@ -379,7 +379,7 @@ export default function FacturasPage() {
   const viewFile = async (url: string | null) => {
     if (!url) return;
     toast.info("Abriendo archivo seguro...");
-    const signedUrl = await getSignedUrl(url);
+    const signedUrl = url;
     if (signedUrl) {
       window.open(signedUrl, "_blank");
     }
