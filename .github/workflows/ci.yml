@@ -48,7 +48,7 @@ jobs:
       - name: Terraform Init & Apply
         working-directory: infra/terraform
         run: |
-          terraform init
+          terraform init -force-copy
           terraform apply -auto-approve
 
       - name: Restart Kubernetes Deployments
