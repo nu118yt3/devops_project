@@ -8,7 +8,7 @@ terraform {
 }
 
 provider "kubernetes" {
-  config_path = "~/.kube/config"
+  config_path = "k3s-output/kubeconfig.yaml"
 }
 
 resource "kubernetes_namespace" "app_namespace" {
