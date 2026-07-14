@@ -140,49 +140,6 @@ export default function FacturasPage() {
     }
   };
 
-  // Helper para extraer la ruta del archivo de una URL de Supabase
-  const extractPathFromUrl = (url: string | null) => {
-    if (!url) return "";
-    try {
-      // Si ya es una ruta relativa (no contiene http), la devolvemos tal cual
-      if (!url.startsWith("http")) return url;
-
-      const bucketName = "archivos";
-
-      // Intentar encontrar el nombre del bucket en la URL
-      // Formato típico: https://[project].supabase.co/storage/v1/object/public/archivos/path/to/file
-      const urlObj = new URL(url);
-      const pathParts = urlObj.pathname.split("/");
-      const bucketIndex = pathParts.indexOf(bucketName);
-
-      if (bucketIndex !== -1 && bucketIndex < pathParts.length - 1) {
-        return pathParts.slice(bucketIndex + 1).join("/");
-      }
-
-      // Fallback: si no se encuentra el nombre del bucket, intentar patrones comunes
-      const storagePattern = "/storage/v1/object/";
-      if (url.includes(storagePattern)) {
-        const afterStorage = url.split(storagePattern)[1];
-        // afterStorage será "public/bucket/path..." o "authenticated/bucket/path..."
-        const parts = afterStorage.split("/");
-        if (parts.length >= 3) {
-          // El primer elemento es "public" o "authenticated", el segundo es el bucket
-          return parts.slice(2).join("/");
-        }
-      }
-
-      return url;
-    } catch (error) {
-      console.error("Error al extraer la ruta de la URL:", error);
-      return url || "";
-    }
-  };
-
-  // Helper para obtener una URL firmada (para buckets privados)
-  const getSignedUrl = async (storedUrl: string | null, download = false) => {
-    return storedUrl;
-  };
-
 
 
   // Determinar tipo de archivo por extensión
@@ -334,8 +291,7 @@ export default function FacturasPage() {
   };
 
   const uploadFileToStorage = async (
-    file: File,
-    folder: string
+    file: File
   ): Promise<string | null> => {
     try {
       const formData = new FormData();
@@ -438,8 +394,7 @@ export default function FacturasPage() {
     setPreviewDialogOpen(true);
     setPreviewUrl(""); // Limpiar previa anterior
 
-    const signedUrl = await getSignedUrl(invoice.attachment_file_url);
-    setPreviewUrl(signedUrl);
+    setPreviewUrl(invoice.attachment_file_url || "");
     setIsLoadingPreview(false);
   };
 
@@ -511,16 +466,13 @@ export default function FacturasPage() {
     setIsLoading(true);
 
     try {
-      const xmlUrl = await uploadFileToStorage(xmlFile, "xml");
+      const xmlUrl = await uploadFileToStorage(xmlFile);
       if (!xmlUrl) {
         setIsLoading(false);
         return;
       }
 
-      const attachmentUrl = await uploadFileToStorage(
-        attachmentFile,
-        "attachments"
-      );
+      const attachmentUrl = await uploadFileToStorage(attachmentFile);
       if (!attachmentUrl) {
         setIsLoading(false);
         return;

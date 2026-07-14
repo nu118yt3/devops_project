@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { Plus, Pencil, Trash2, Search, User as UserIcon, Loader2, Mail, Lock } from "lucide-react"
 import supabase, { supabaseUrl, supabaseKey } from "@/utils/supabase"
-import { createClient } from "@supabase/supabase-js"
+
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
