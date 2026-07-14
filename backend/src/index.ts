@@ -36,6 +36,15 @@ const io = new Server(httpServer, {
 app.use(cors());
 app.use(express.json());
 
+// --- HEALTH CHECK ENDPOINT ---
+app.get('/health', (req: Request, res: Response) => {
+  res.status(200).json({
+    status: 'UP',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
 // 2. Configurar el Pool de Postgres (Directo a tu Supabase DB o DB Custom)
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
