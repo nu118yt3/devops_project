@@ -1,0 +1,2 @@
+infra/terraform/k3s-output/*
+!infra/terraform/k3s-output/kubeconfig.yaml
