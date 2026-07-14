@@ -381,6 +381,7 @@ export default function ChatsPage() {
         await api.post('/group_members', {
           data: members.map(user_id => ({ group_id: group.id, user_id }))
         });
+      }
 
       const newConvo: Conversation = {
         id: group.id,

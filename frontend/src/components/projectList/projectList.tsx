@@ -242,6 +242,7 @@ export function ProjectList() {
   };
 
   // Función para eliminar proyecto
+  const deleteProject = async (projectId: string) => {
     try {
       setIsDeleting(true);
       await api.delete(`/projects/${projectId}`);
