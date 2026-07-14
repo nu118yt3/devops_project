@@ -8,8 +8,7 @@ terraform {
 }
 
 provider "docker" {
-  # Asumiendo Docker Desktop en Windows
-  host = "npipe:////./pipe/docker_engine"
+  # Terraform autodetectará el socket de Docker.
 }
 
 resource "docker_image" "k3s" {
