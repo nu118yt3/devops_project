@@ -53,6 +53,7 @@ jobs:
 
       - name: Restart Kubernetes Deployments
         run: |
+          export KUBECONFIG=$GITHUB_WORKSPACE/infra/terraform/k3s-output/kubeconfig.yaml
           kubectl rollout restart deployment/frontend-deployment -n devops-app || true
           kubectl rollout restart deployment/backend-deployment -n devops-app || true
           kubectl rollout restart deployment/postgres-deployment -n devops-app || true
