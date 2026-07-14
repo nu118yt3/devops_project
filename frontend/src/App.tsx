@@ -1,3 +1,6 @@
+/** @jsx React.createElement */
+/** @jsxFrag React.Fragment */
+import React from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import LoginPage from "./components/login/page";
 import DashboardPage from "./components/dashboard/page";
@@ -59,6 +62,14 @@ const ProjectRequiredRoute = ({ children }: { children: React.ReactNode }) => {
     return <>{children}</>;
 };
 
+const NotFound = () => (
+  <div style={{ textAlign: 'center', marginTop: '100px' }}>
+    <h1>404 - Página no encontrada</h1>
+    <p>La ruta que buscas no existe.</p>
+    <a href="/projects" style={{ color: 'blue', textDecoration: 'underline' }}>Volver a Proyectos</a>
+  </div>
+);
+
 export function App() {
     return (
         <AuthProvider>
@@ -88,6 +99,7 @@ export function App() {
                         <Route path="planos" element={<PlanosList />} />
                         <Route path="facturas" element={<FacturasPage />} />
                         <Route path="bitacora" element={<BitacoraForm />} />
+                        <Route path="*" element={<NotFound />} />
                     </Route>
                 </Routes>
                 <Toaster richColors position="top-center" />
