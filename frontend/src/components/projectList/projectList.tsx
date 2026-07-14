@@ -208,22 +208,13 @@ export function ProjectList() {
     if (currentPage > maxPage) setCurrentPage(maxPage);
   }, [projectsPerPage, filteredProjects.length]);
 
-  // Función para obtener el rol del usuario
   const fetchUserRole = async () => {
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data, error } = await supabase
-        .from("users")
-        .select("role, avatar_url")
-        .eq("id", user.id)
-        .single();
-
-      if (error) throw error;
-      setUserRole(data);
+      const token = localStorage.getItem('token');
+      if (token) {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        setUserRole({ role: payload.role, avatar_url: payload.avatar_url });
+      }
     } catch (err) {
       console.error("Error fetching user role:", err);
     }
@@ -353,13 +344,8 @@ export function ProjectList() {
     try {
       setIsEditing(true);
 
-      const { error } = await supabase.rpc("update_project", {
-        project_id: projectToEdit.id,
-        project_name: editProject.name.trim(),
-        project_description: editProject.description.trim() || null,
-      });
-
-      if (error) throw error;
+      // API PUT would go here
+      // await api.put(`/projects/${projectToEdit.id}`, { data: editProject });
 
       // 🔥 ACTUALIZACIÓN OPTIMIZADA: Solo actualizar el proyecto modificado
       setProjects((prev) =>
