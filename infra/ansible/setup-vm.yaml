@@ -1,0 +1,108 @@
+---
+- name: Setup VM with DevOps Tools
+  hosts: localhost
+  become: yes
+  vars:
+    github_runner_version: "2.335.1"
+    github_repo_url: "https://github.com/nu118yt3/devops_project" # Cambiar esto
+    github_runner_token: "A2HX4RQPF6QY47IU5FMY2TTKKWIYI"     # Cambiar esto
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install required system packages
+      apt:
+        name:
+          - git
+          - curl
+          - unzip
+          - apt-transport-https
+          - ca-certificates
+          - software-properties-common
+          - jq
+        state: present
+
+    - name: Install Docker
+      shell: curl -fsSL https://get.docker.com -o get-docker.sh && sh get-docker.sh
+      args:
+        creates: /usr/bin/docker
+
+    - name: Start and enable Docker service
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Run local Docker registry
+      docker_container:
+        name: registry
+        image: registry:2
+        state: started
+        restart_policy: always
+        ports:
+          - "5000:5000"
+
+    - name: Install K3s
+      shell: curl -sfL https://get.k3s.io | sh -
+      args:
+        creates: /usr/local/bin/k3s
+      environment:
+        INSTALL_K3S_EXEC: "--docker" # Para que k3s use docker como container runtime si es necesario, aunque containerd es el default.
+
+    - name: Download HashiCorp GPG key
+      get_url:
+        url: https://apt.releases.hashicorp.com/gpg
+        dest: /usr/share/keyrings/hashicorp-archive-keyring.asc
+
+    - name: Add HashiCorp repository
+      apt_repository:
+        repo: "deb [arch=amd64 signed-by=/usr/share/keyrings/hashicorp-archive-keyring.asc] https://apt.releases.hashicorp.com jammy main"
+        state: present
+
+    - name: Install Terraform
+      apt:
+        name: terraform
+        state: present
+
+    - name: Create GitHub Actions runner user
+      user:
+        name: actions-runner
+        create_home: yes
+        shell: /bin/bash
+
+    - name: Add runner user to docker group
+      user:
+        name: actions-runner
+        groups: docker
+        append: yes
+
+    - name: Create runner directory
+      file:
+        path: /home/actions-runner/actions-runner
+        state: directory
+        owner: actions-runner
+        group: actions-runner
+
+    - name: Download GitHub Actions Runner
+      unarchive:
+        src: "https://github.com/actions/runner/releases/download/v{{ github_runner_version }}/actions-runner-linux-x64-{{ github_runner_version }}.tar.gz"
+        dest: /home/actions-runner/actions-runner
+        remote_src: yes
+        owner: actions-runner
+        group: actions-runner
+        creates: /home/actions-runner/actions-runner/config.sh
+
+    - name: Configure GitHub Actions Runner
+      become_user: actions-runner
+      shell: ./config.sh --url {{ github_repo_url }} --token {{ github_runner_token }} --unattended --replace
+      args:
+        chdir: /home/actions-runner/actions-runner
+        creates: /home/actions-runner/actions-runner/.credentials
+
+    - name: Install and start runner service
+      shell: ./svc.sh install && ./svc.sh start
+      args:
+        chdir: /home/actions-runner/actions-runner
+        creates: /etc/systemd/system/actions.runner.*.service
