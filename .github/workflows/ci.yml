@@ -6,12 +6,13 @@ on:
       - main
 
 jobs:
-  changes:
+  detect-changes:
     runs-on: ubuntu-latest
     outputs:
       frontend: ${{ steps.filter.outputs.frontend }}
       backend: ${{ steps.filter.outputs.backend }}
-      database: ${{ steps.filter.outputs.database }}
+      db: ${{ steps.filter.outputs.db }}
+      infra: ${{ steps.filter.outputs.infra }}
     steps:
       - uses: actions/checkout@v3
       - uses: dorny/paths-filter@v2
@@ -22,44 +23,69 @@ jobs:
               - 'frontend/**'
             backend:
               - 'backend/**'
-            database:
-              - 'backend/db-init.sql'
+              - '!backend/database.Dockerfile'
+              - '!backend/db-init.sql'
+            db:
               - 'backend/database.Dockerfile'
+              - 'backend/db-init.sql'
+            infra:
+              - 'infra/terraform/**'
 
-  build-and-deploy:
-    needs: changes
-    runs-on: self-hosted # Self-hosted para acceder a localhost:5000 y al clúster local
+  build-and-push:
+    needs: detect-changes
+    runs-on: self-hosted # Usar runner local para tener acceso a localhost:5000 y al cluster k3s
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # FRONTEND
-      - name: Build Frontend Image
-        if: ${{ needs.changes.outputs.frontend == 'true' }}
+      - name: Build & Push Frontend
+        if: needs.detect-changes.outputs.frontend == 'true'
         run: |
           docker build -t localhost:5000/frontend:latest -f frontend/Dockerfile frontend/
           docker push localhost:5000/frontend:latest
-          kubectl rollout restart deployment/frontend || true
 
-      # BACKEND
-      - name: Build Backend Image
-        if: ${{ needs.changes.outputs.backend == 'true' }}
+      - name: Build & Push Backend
+        if: needs.detect-changes.outputs.backend == 'true'
         run: |
           docker build -t localhost:5000/backend:latest -f backend/Dockerfile backend/
           docker push localhost:5000/backend:latest
-          kubectl rollout restart deployment/backend || true
 
-      # DATABASE
-      - name: Build Database Image
-        if: ${{ needs.changes.outputs.database == 'true' }}
+      - name: Build & Push DB (Postgres)
+        if: needs.detect-changes.outputs.db == 'true'
         run: |
-          docker build -t localhost:5000/database:latest -f backend/database.Dockerfile backend/
-          docker push localhost:5000/database:latest
-          kubectl rollout restart deployment/postgres || true
+          docker build -t localhost:5000/db:latest -f backend/database.Dockerfile backend/
+          docker push localhost:5000/db:latest
 
-      # TERRAFORM (Optional: Aplicar cambios de infraestructura)
-      - name: Apply Terraform
+  deploy-terraform:
+    needs: [detect-changes, build-and-push]
+    # Si cualquiera de estos cambió, ejecutamos terraform para forzar el reinicio o aplicar cambios de infraestructura
+    if: |
+      always() && 
+      (needs.detect-changes.outputs.frontend == 'true' || 
+       needs.detect-changes.outputs.backend == 'true' || 
+       needs.detect-changes.outputs.db == 'true' || 
+       needs.detect-changes.outputs.infra == 'true')
+    runs-on: self-hosted
+    defaults:
+      run:
+        working-directory: infra/terraform
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve
+
+      - name: Restart Deployments (if image updated without tag change)
         run: |
-          cd infra/terraform
-          terraform init
-          terraform apply -auto-approve
+          kubectl rollout restart deployment/frontend-deployment -n devops-app || true
+          kubectl rollout restart deployment/backend-deployment -n devops-app || true
+          kubectl rollout restart deployment/postgres-deployment -n devops-app || true

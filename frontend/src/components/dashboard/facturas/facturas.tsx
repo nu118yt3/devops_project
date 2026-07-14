@@ -56,7 +56,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import supabase from "@/utils/supabase";
+import { api } from "@/api";
 import { toast } from "sonner";
 import { useProject } from "@/contexts/ProjectContext";
 
@@ -128,29 +128,13 @@ export default function FacturasPage() {
 
   // Cargar facturas desde la base de datos
   const loadInvoices = async () => {
-    if (!project?.id) return;
-
+    if (!project) return;
     setIsLoadingInvoices(true);
     try {
-      const { data, error } = await supabase
-        .from("project_files")
-        .select("*")
-        .eq("project_id", project.id)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-
-      // Enriquecer datos con tipo de archivo adjunto
-      const enrichedData = (data || []).map((invoice) => ({
-        ...invoice,
-        attachment_file_type: getFileType(invoice.attachment_file_name),
-      }));
-
-      setInvoices(enrichedData);
-      setHasLoadedInvoices(true);
-    } catch (error: any) {
-      console.error("Error loading invoices:", error);
-      toast.error("Error al cargar las facturas");
+      const { data } = await api.get('/project_files');
+      setInvoices(data ? data.filter((i:any) => i.project_id === project.id) : []);
+    } catch (err) {
+      console.error("Error loading invoices:", err);
     } finally {
       setIsLoadingInvoices(false);
     }
@@ -196,21 +180,7 @@ export default function FacturasPage() {
 
   // Helper para obtener una URL firmada (para buckets privados)
   const getSignedUrl = async (storedUrl: string | null, download = false) => {
-    if (!storedUrl) return "";
-    const path = extractPathFromUrl(storedUrl);
-
-    try {
-      const { data, error } = await supabase.storage
-        .from("archivos")
-        .createSignedUrl(path, 3600, download ? { download: true } : undefined);
-
-      if (error) throw error;
-      return data.signedUrl;
-    } catch (error) {
-      console.error("Error generating signed URL:", error);
-      toast.error("Error al acceder al archivo privado");
-      return "";
-    }
+    return storedUrl;
   };
 
 
@@ -368,25 +338,13 @@ export default function FacturasPage() {
     folder: string
   ): Promise<string | null> => {
     try {
-      const originalName = file.name;
-      const sanitizedName = originalName
-        .replace(/[^\w\s.-]/gi, "")
-        .replace(/\s+/g, "_")
-        .toLowerCase();
-
-      const timestamp = Date.now();
-      const fileName = `${timestamp}_${sanitizedName}`;
-      const filePath = `${folder}/${fileName}`;
-
-      const { error } = await supabase.storage
-        .from("archivos")
-        .upload(filePath, file);
-
-      if (error) throw error;
-
-      return filePath;
+      const formData = new FormData();
+      formData.append("file", file);
+      
+      const { data } = await api.post('/storage/upload', { data: formData });
+      return data.url;
     } catch (error) {
-      console.error("Error uploading file:", error);
+      console.error(`Error uploading file:`, error);
       toast.error(`Error al subir el archivo`);
       return null;
     }
@@ -490,32 +448,7 @@ export default function FacturasPage() {
     if (!invoiceToDelete) return;
 
     try {
-      const { data: invoice } = await supabase
-        .from("project_files")
-        .select("xml_file_name, attachment_file_name")
-        .eq("id", invoiceToDelete)
-        .single();
-
-      if (invoice) {
-        const { error: storageError } = await supabase.storage
-          .from("archivos")
-          .remove(["xml/" + invoice.xml_file_name]);
-        const { error: storageError2 } = await supabase.storage
-          .from("archivos")
-          .remove(["attachments/" + invoice.attachment_file_name]);
-
-        if (storageError || storageError2) {
-          console.error("Error deleting files from storage:", storageError);
-        }
-      }
-
-      const { error } = await supabase
-        .from("project_files")
-        .delete()
-        .eq("id", invoiceToDelete);
-
-      if (error) throw error;
-
+      await api.delete(`/project_files/${invoiceToDelete}`);
       setInvoices((prev) => prev.filter((inv) => inv.id !== invoiceToDelete));
       toast.success("Factura eliminada correctamente");
     } catch (error: any) {
@@ -593,10 +526,8 @@ export default function FacturasPage() {
         return;
       }
 
-      const { data: fileRecord, error: dbError } = await supabase
-        .from("project_files")
-        .insert([
-          {
+      const { data: fileRecord } = await api.post("/project_files", {
+        data: {
             project_id: formData.projectId,
             xml_file_name: xmlFile.name,
             xml_file_url: xmlUrl,
@@ -606,13 +537,8 @@ export default function FacturasPage() {
             tags: formData.tag ? [formData.tag] : [],
             comments: formData.notes,
             invoice_date: formData.date,
-            created_at: new Date().toISOString(),
-          },
-        ])
-        .select()
-        .single();
-
-      if (dbError) throw dbError;
+        }
+      });
 
       // Enriquecer con tipo de archivo
       const enrichedRecord = {
