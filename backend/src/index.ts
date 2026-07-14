@@ -80,7 +80,7 @@ if (STORAGE_TYPE === 's3') {
     s3: s3Client as any,
     bucket: process.env.S3_BUCKET_NAME!,
     contentType: multerS3.AUTO_CONTENT_TYPE,
-    key: (_req, file, cb) => {
+    key: (_req: any, file: any, cb: any) => {
       const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
       cb(null, `uploads/${uniqueSuffix}-${file.originalname}`);
     },
